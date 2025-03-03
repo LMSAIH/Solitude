@@ -1,25 +1,60 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import * as faceapi from "face-api.js";
+import { useExpression } from "../context/ExpressionContext";
 
-const FaceExpressionDetector: React.FC = () => {
+interface FaceExpressionDetectorProps {
+    playing: boolean;
+}
+
+const FaceExpressionDetector: React.FC<FaceExpressionDetectorProps> = ({ playing }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
+    const streamRef = useRef<MediaStream | null>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const [expression, setExpression] = useState<string>("Detecting...");
+    const {expression, setExpression} = useExpression();
+    const intervalIdRef = useRef<number | null>(null);
 
     useEffect(() => {
         const loadModels = async () => {
             await faceapi.nets.tinyFaceDetector.loadFromUri("/models");
             await faceapi.nets.faceExpressionNet.loadFromUri("/models");
-            startVideo();
-        };
-
-        const startVideo = async () => {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
-            if (videoRef.current) videoRef.current.srcObject = stream;
         };
 
         loadModels();
+        
     }, []);
+
+    useEffect(() => {
+        const startVideo = async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
+                streamRef.current = stream;
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                }
+            } catch (error) {
+                console.error("Error accessing webcam:", error);
+            }
+        };
+
+        if (playing) {
+            startVideo();
+        } else {
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => track.stop());
+                streamRef.current = null;
+            }
+            if (videoRef.current) {
+                videoRef.current.srcObject = null;
+            }
+        }
+
+        return () => {
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => track.stop());
+                streamRef.current = null;
+            }
+        };
+    }, [playing]);
 
     useEffect(() => {
         const detectExpressions = async () => {
@@ -32,15 +67,23 @@ const FaceExpressionDetector: React.FC = () => {
 
             faceapi.matchDimensions(canvasRef.current, displaySize);
 
-            setInterval(async () => {
+            intervalIdRef.current = window.setInterval(async () => {
+                if (!videoRef.current) return;
 
-                const detections = await faceapi.detectSingleFace(videoRef.current!, new faceapi.TinyFaceDetectorOptions()).withFaceExpressions();
+                const detections = await faceapi
+                    .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+                    .withFaceExpressions();
+
                 const ctx = canvasRef.current!.getContext("2d");
-                ctx?.clearRect(0, 0, canvasRef.current!.width, canvasRef.current!.height)
+                ctx?.clearRect(0, 0, canvasRef.current!.width, canvasRef.current!.height);
+
                 if (detections) {
                     const expressions = detections.expressions;
-                    const maxExpression = Object.keys(expressions).reduce((a, b) => (expressions[a as keyof typeof expressions] > expressions[b as keyof typeof expressions] ? a : b));
+                    const maxExpression = Object.keys(expressions).reduce((a, b) =>
+                        expressions[a as keyof typeof expressions] > expressions[b as keyof typeof expressions] ? a : b
+                    );
                     setExpression(maxExpression);
+
                     const resizedDetections = faceapi.resizeResults(detections, displaySize);
                     faceapi.draw.drawDetections(canvasRef.current!, resizedDetections);
                 } else {
@@ -49,12 +92,22 @@ const FaceExpressionDetector: React.FC = () => {
             }, 100);
         };
 
-        videoRef.current?.addEventListener("playing", detectExpressions);
-        return () => videoRef.current?.removeEventListener("playing", detectExpressions);
-    }, []);
+        if (playing) {
+            videoRef.current?.addEventListener("playing", detectExpressions);
+        }
+
+        return () => {
+            videoRef.current?.removeEventListener("playing", detectExpressions);
+            if (intervalIdRef.current !== null) {
+                clearInterval(intervalIdRef.current);
+                intervalIdRef.current = null;
+            }
+        };
+    }, [playing]);
+
 
     return (
-        <div className="relative w-fit">
+        <div className="relative w-fit m-auto">
             <video ref={videoRef} autoPlay muted />
             <canvas ref={canvasRef} className="absolute top-0 right-0 w-full" />
             <p className="mt-4 text-xl font-bold">Expression: {expression}</p>
