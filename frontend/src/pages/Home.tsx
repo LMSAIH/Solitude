@@ -2,87 +2,67 @@ import { useState, useEffect, useRef } from 'react';
 import { useExpression } from '../context/ExpressionContext';
 import FaceExpressionDetector from '../components/FaceDetectionCanvas';
 import { useGetMessage } from '../hooks/useGetMessage';
+import { useSpeechMonitor } from '../hooks/useSpeechMonitor';
+import useTextToSpeech from '../hooks/useTextToSpeech';
 import { v4 as uuidv4 } from 'uuid';
-
+import TextToSpeechComponent from '../components/TextToSpeechComponent';
 
 export default function Home() {
   const [cameraActive, setCameraActive] = useState(false);
   const { expression } = useExpression();
-  const { getMessage, error, loading, stream } = useGetMessage();
+  const { getMessage, error, loading, stream, eventSourceRef } = useGetMessage();
   const [assistantMessages, setAssistantMessages] = useState<string[]>([]);
-  const [transcribedText, setTranscribedText] = useState<string>('');
+  const [transcribedText, setTranscribedText] = useState<string>("");
   const id = uuidv4();
 
+  const { speaking } = useSpeechMonitor(transcribedText);
+  const { assistantIsSpeaking } = useTextToSpeech(transcribedText);
+
   useEffect(() => {
+    const startRecognition = (setText: (text: string) => void) => {
+      const SpeechRecognition =
+        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
-    getMessage(expression, "cheerful", transcribedText, id);
-    
-    if (!loading) {
-      speakText(stream);
-      setAssistantMessages((prev) => [...prev, stream]);
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = "en-US";
+
+        recognition.onresult = (event: any) => {
+          if (!assistantIsSpeaking) {
+            let transcript: String = "";
+            for (let i = 0; i < event.results.length; i++) {
+              transcript += event.results[i][0].transcript + " ";
+            }
+            setText(transcript.trim());
+          }
+        };
+
+        recognition.start();
+      } else {
+        console.warn("Speech Recognition API is not supported.");
+      }
+    };
+
+    startRecognition(setTranscribedText);
+  }, []);
+
+  useEffect(() => {
+    if (!speaking && transcribedText === "") {
+      getMessage(expression, "neutral", "Welcome me to the application", id);
+    } else if (!speaking) {
+      getMessage(expression, "neutral", transcribedText, id);
     }
+  }, [speaking]);
 
-
-  }, [transcribedText]);
-
-  const expressions = ['neutral', 'happy', 'angry', 'sad', 'fearful', 'disgusted', 'surprised'];
-
-  const recognitionRef = useRef<any | null>(null);
-  const silenceTimerRef = useRef<any | null>(null);
+  useEffect(() => {
+    setAssistantMessages((prev) => [...prev, stream]);
+  }, [stream]);
 
   const toggleCamera = () => {
     setCameraActive((prev) => !prev);
   };
-
-  const speakText = (text: string) => {
-    if ('speechSynthesis' in window) {
-      const synth = window.speechSynthesis;
-      synth.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'en-US';
-      utterance.rate = 1;
-      utterance.pitch = 1;
-      synth.speak(utterance);
-    } else {
-      console.warn('Speech synthesis not supported in this browser.');
-    }
-  };
-
-  useEffect(() => {
-    if (!('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
-      console.warn('Speech Recognition API is not supported in this browser.');
-      return;
-    }
-
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.lang = 'en-US';
-
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      setTranscribedText(transcript);
-
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = setTimeout(() => {
-        getMessage(expression, 'cheerful', transcript, id);
-      }, 2000);
-    };
-
-    recognition.onend = () => {
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-    };
-
-    recognitionRef.current = recognition;
-  }, [expression, getMessage]);
-
-  const startListening = () => {
-    recognitionRef.current?.start();
-  };
-
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-rose-50 to-indigo-50 flex flex-col items-center justify-center p-4">
@@ -109,7 +89,6 @@ export default function Home() {
             <div className="bg-gradient-to-r from-pink-100 to-purple-100 p-3 flex justify-between items-center">
               <h2 className="text-lg font-medium text-gray-800">AI Assistant</h2>
               <button
-                onClick={startListening}
                 className="px-3 py-1 rounded-full bg-white/70 text-sm font-medium hover:bg-white/90 transition-colors hover:cursor-pointer"
               >
                 🎙️ Start Listening
@@ -126,11 +105,14 @@ export default function Home() {
         <div className="mt-4">
           <p>Current expression: {expression}</p>
           <p>Transcribed Text: {transcribedText}</p>
-          <p>User messages:</p>
+          <p>Assistant messages:</p>
           {assistantMessages.map((message, index) => (
             <p key={index}>{message}</p>
           ))}
         </div>
+        {eventSourceRef.current && (
+          <TextToSpeechComponent stream={eventSourceRef.current} />
+        )}
       </div>
     </div>
   );
