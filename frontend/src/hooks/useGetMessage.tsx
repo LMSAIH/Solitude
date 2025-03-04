@@ -12,7 +12,6 @@ export const useGetMessage = () => {
             eventSourceRef.current.close();
         }
 
-        setLoading(true);
         setError(null);
         setStream('');
 
@@ -22,6 +21,11 @@ export const useGetMessage = () => {
 
         const es = new EventSource(url);
         eventSourceRef.current = es;
+
+        es.onopen = () => {
+            setLoading(true);
+            setError(null);
+        };
 
         es.onmessage = (event) => {
             setStream((prev) => prev + event.data);
@@ -35,13 +39,7 @@ export const useGetMessage = () => {
             } else {
                 setError('Connection error. Attempting to reconnect...');
             }
-        };
-
-        es.onopen = () => {
-            setLoading(false);
-            setError(null);
-        };
-
+        };       
 
     };
 
@@ -53,5 +51,5 @@ export const useGetMessage = () => {
         };
     }, []);
 
-    return { loading, error, stream, getMessage };
+    return { loading, error, stream, getMessage, eventSourceRef };
 };
