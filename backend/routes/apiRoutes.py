@@ -11,6 +11,7 @@ import os
 
 load_dotenv()
 
+
 OPENAIKEY = os.getenv("OPENAIKEY")
 
 if not OPENAIKEY:
