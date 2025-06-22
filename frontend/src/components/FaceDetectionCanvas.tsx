@@ -1,16 +1,18 @@
 import React, { useEffect, useRef } from "react";
 import * as faceapi from "face-api.js";
-import { useExpression } from "../context/ExpressionContext";
 
 interface FaceExpressionDetectorProps {
     playing: boolean;
+    onExpressionChange?: (expression: string) => void;
 }
 
-const FaceExpressionDetector: React.FC<FaceExpressionDetectorProps> = ({ playing }) => {
+const FaceExpressionDetector: React.FC<FaceExpressionDetectorProps> = ({ 
+    playing, 
+    onExpressionChange 
+}) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const {expression, setExpression} = useExpression();
     const intervalIdRef = useRef<number | null>(null);
 
     useEffect(() => {
@@ -82,12 +84,12 @@ const FaceExpressionDetector: React.FC<FaceExpressionDetectorProps> = ({ playing
                     const maxExpression = Object.keys(expressions).reduce((a, b) =>
                         expressions[a as keyof typeof expressions] > expressions[b as keyof typeof expressions] ? a : b
                     );
-                    setExpression(maxExpression);
+                    onExpressionChange?.(maxExpression);
 
                     const resizedDetections = faceapi.resizeResults(detections, displaySize);
                     faceapi.draw.drawDetections(canvasRef.current!, resizedDetections);
                 } else {
-                    setExpression("No face detected");
+                    onExpressionChange?.("No face detected");
                 }
             }, 100);
         };
@@ -103,14 +105,12 @@ const FaceExpressionDetector: React.FC<FaceExpressionDetectorProps> = ({ playing
                 intervalIdRef.current = null;
             }
         };
-    }, [playing]);
-
+    }, [playing, onExpressionChange]);
 
     return (
         <div className="relative w-fit m-auto">
             <video ref={videoRef} autoPlay muted />
             <canvas ref={canvasRef} className="absolute top-0 right-0 w-full" />
-            <p className="mt-4 text-xl font-bold">Expression: {expression}</p>
         </div>
     );
 };
