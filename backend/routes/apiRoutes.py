@@ -19,8 +19,6 @@ if not OPENAIKEY:
 
 router = APIRouter()
 
-
-
 conversation_cache: Dict[str, List[Dict]] = {}
 
 client = AsyncOpenAI(api_key=OPENAIKEY)
@@ -42,7 +40,7 @@ async def generate_response_stream(emotion: str, conversation_id: str, message: 
     
     try:
         stream = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4.1-nano",
             messages=api_messages,
             stream=True,
             max_tokens=500
