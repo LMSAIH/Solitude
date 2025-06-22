@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import FaceExpressionDetector from '../components/FaceDetectionCanvas';
 import SpeechRecognitionComponent from '../utils/SpeechRecognition';
 import { getMessage, cleanup } from '../utils/MessageUtils';
+import { client, speechifyPlayer } from '../utils/Speechify';
+
 
 export default function Home() {
   const [cameraActive, setCameraActive] = useState(false);
@@ -10,48 +12,101 @@ export default function Home() {
   const [stream, setStream] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const [aiSpeaking, setAiSpeaking] = useState<boolean>(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const lastSentMessage = useRef<string>('');
 
   const toggleCamera = () => {
     setCameraActive((prev) => !prev);
-    cleanup(eventSourceRef); 
+    cleanup(eventSourceRef);
   };
 
   const handleExpressionChange = (expression: string) => {
     setCurrentExpression(expression);
   };
 
+  useEffect(() => {
+
+    if (loading || !stream) {
+      return;
+    }
+
+    const talk = async () => {
+
+      setAiSpeaking(true);
+
+      try {
+
+        const response = await client.tts.audio.speech({
+          input: stream,
+          voiceId: 'carly',
+        })
+
+        console.log('Audio response generated:', response);
+
+        await speechifyPlayer.playAudio(response);
+
+        setTimeout(() => {
+          setAiSpeaking(false);
+        }, response.speechMarks.endTime + 200);
+
+      } catch (error) {
+        console.error('Error generating audio response:', error);
+        setError('Failed to generate audio response');
+      }
+
+    }
+    
+    talk();
+
+  }, [loading]);
   // Auto-send message when transcription is complete
   useEffect(() => {
-    if (currentTranscription && 
-        currentTranscription !== 'Listening...' && 
-        currentTranscription !== 'Failed to start listening' &&
-        currentTranscription !== lastSentMessage.current &&
-        currentTranscription.trim().length > 5 && // Only send if meaningful content
-        !loading) {
-      
+    if (currentTranscription &&
+      currentTranscription !== 'Listening...' &&
+      currentTranscription !== 'Failed to start listening' &&
+      currentTranscription !== lastSentMessage.current &&
+      currentTranscription.trim().length > 5 && // Only send if meaningful content
+      !loading && !aiSpeaking) {
+
       // Add a small delay to ensure the sentence is complete
       const timeoutId = setTimeout(() => {
         lastSentMessage.current = currentTranscription;
         getMessage(
-          setLoading, 
-          eventSourceRef, 
-          setError, 
-          setStream, 
-          currentExpression, 
-          "friendly", 
-          currentTranscription, 
+          setLoading,
+          eventSourceRef,
+          setError,
+          setStream,
+          currentExpression,
+          "friendly",
+          currentTranscription,
           "auto-conversation-123"
         );
-      }, 1500); // 1.5 second delay to ensure sentence completion
+      }, 200); // 200ms delay to ensure sentence completion
 
       return () => clearTimeout(timeoutId);
     }
   }, [currentTranscription, currentExpression, loading]);
 
-  const handleTestMessage = () => {
+  const handleTestMessage = async () => {
     getMessage(setLoading, eventSourceRef, setError, setStream, currentExpression, "friendly", currentTranscription, "test-conversation-123");
+
+    try {
+
+      const response = await client.tts.audio.speech({
+        input: stream,
+        voiceId: 'carly',
+      })
+
+      console.log('Audio response generated:', response);
+
+      await speechifyPlayer.playAudio(response);
+
+    } catch (error) {
+      console.error('Error generating audio response:', error);
+      setError('Failed to generate audio response');
+    }
+
   };
 
   return (
@@ -77,11 +132,10 @@ export default function Home() {
               <h2 className="text-lg font-medium text-slate-700">Your Camera</h2>
               <button
                 onClick={toggleCamera}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
-                  cameraActive
-                    ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                    : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
-                }`}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${cameraActive
+                  ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                  : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
+                  }`}
               >
                 {cameraActive ? '● Stop Camera' : '▶ Start Camera'}
               </button>
@@ -89,8 +143,8 @@ export default function Home() {
             <div className="p-6">
               <div className="w-full h-96 bg-slate-50 rounded-xl overflow-hidden border border-slate-200">
                 {cameraActive ? (
-                  <FaceExpressionDetector 
-                    playing={cameraActive} 
+                  <FaceExpressionDetector
+                    playing={cameraActive}
                     onExpressionChange={handleExpressionChange}
                   />
                 ) : (
@@ -124,7 +178,7 @@ export default function Home() {
                     <p className="text-slate-600 font-medium text-sm">Expression: {currentExpression}</p>
                     <p className="text-slate-600 font-medium text-sm mt-1">You said: "{currentTranscription}"</p>
                   </div>
-                  
+
                   {/* AI Response Area */}
                   <div className="flex-1 bg-white rounded-lg p-4 overflow-y-auto">
                     {loading && (
@@ -143,7 +197,7 @@ export default function Home() {
                       <p className="text-slate-400 text-sm">Start speaking to get AI responses automatically...</p>
                     )}
                   </div>
-                  
+
                   {/* Manual Test Button */}
                   <button
                     onClick={handleTestMessage}
@@ -164,19 +218,18 @@ export default function Home() {
             <div>
               <p className="text-slate-700 font-medium">Status</p>
               <p className="text-slate-500 text-sm">
-                {cameraActive ? 
-                  `Active - Expression: ${currentExpression} | ${loading ? 'AI is responding...' : 'Ready to respond'}` : 
+                {cameraActive ?
+                  `Active - Expression: ${currentExpression} | ${loading ? 'AI is responding...' : 'Ready to respond'}` :
                   'Camera and microphone are inactive'
                 }
               </p>
             </div>
-            <div className={`px-3 py-1 rounded-full text-xs font-medium ${
-              cameraActive 
-                ? loading
-                  ? 'bg-yellow-100 text-yellow-700'
-                  : 'bg-emerald-100 text-emerald-700'
-                : 'bg-slate-100 text-slate-600'
-            }`}>
+            <div className={`px-3 py-1 rounded-full text-xs font-medium ${cameraActive
+              ? loading
+                ? 'bg-yellow-100 text-yellow-700'
+                : 'bg-emerald-100 text-emerald-700'
+              : 'bg-slate-100 text-slate-600'
+              }`}>
               {cameraActive ? (loading ? 'Processing' : 'Active') : 'Inactive'}
             </div>
           </div>
