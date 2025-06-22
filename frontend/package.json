@@ -10,8 +10,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@speechify/api": "^1.0.0",
     "@tailwindcss/vite": "^4.0.9",
     "axios": "^1.8.1",
+    "dotenv": "^16.5.0",
     "face-api.js": "^0.22.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
