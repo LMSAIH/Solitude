@@ -40,6 +40,7 @@ export default function Home() {
         const response = await client.tts.audio.speech({
           input: stream,
           voiceId: 'carly',
+    
         })
 
         console.log('Audio response generated:', response);
@@ -66,7 +67,7 @@ export default function Home() {
       currentTranscription !== 'Listening...' &&
       currentTranscription !== 'Failed to start listening' &&
       currentTranscription !== lastSentMessage.current &&
-      currentTranscription.trim().length > 5 && // Only send if meaningful content
+      currentTranscription.trim().length > 3 && // Only send if meaningful content
       !loading && !aiSpeaking) {
 
       // Add a small delay to ensure the sentence is complete
@@ -82,7 +83,7 @@ export default function Home() {
           currentTranscription,
           "auto-conversation-123"
         );
-      }, 200); // 200ms delay to ensure sentence completion
+      }, 800); // 200ms delay to ensure sentence completion
 
       return () => clearTimeout(timeoutId);
     }
