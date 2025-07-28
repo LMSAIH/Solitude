@@ -75,6 +75,7 @@ export class SpeechifyPlayer {
       this.currentAudio.currentTime = 0;
       this.currentAudio = null;
     }
+    
   }
 
   isPlaying(): boolean {
